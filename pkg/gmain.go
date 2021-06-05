@@ -13,12 +13,12 @@ type writer1 struct {
 	writing_buf *[]byte
 }
 
-func (w *writer1) write_to_temp_buf(byte byte) {
+func (w *writer1) writeToTempBuf(byte byte) {
 	*w.writing_buf = append(*w.writing_buf, byte)
 	//fmt.Println("WRITER: Written bytes to writing_buf", byte)
 }
 
-func (w *writer1) write_to_chan(ch chan []byte) {
+func (w *writer1) writeToChan(ch chan []byte) {
 	ch <- *w.writing_buf
 	//fmt.Println("WRITER: Send byte slice to chan", writing_buf)
 	*w.writing_buf = nil
@@ -45,8 +45,7 @@ func (r *reader1) contains(element []byte) (bool, int) {
 	return false, 0
 }
 
-
-func (r *reader1) read_from_chan(ch chan []byte) {
+func (r *reader1) readFromChan(ch chan []byte) {
 	for node := range ch {
 		state, index := r.contains(node)
 		if state {
@@ -58,8 +57,8 @@ func (r *reader1) read_from_chan(ch chan []byte) {
 	}
 }
 
-func (r *reader1) get20mostfrequentwords() {
-	list := make([]int, 20)
+func (r *reader1) getMostFrequentWords(number int) {
+	list := make([]int, number)
 	r.rating = &list
 	for index, _ := range *r.rating {
 		temp := 0
@@ -82,7 +81,6 @@ func (r *reader1) print() {
 
 	}
 }
-
 
 //I created two structs with the methods to write and read from the shared channel of []bytes. String is not allowed, so we assume that slice of bytes is a word.
 //Writer and reader1 works in different goroutines.
@@ -123,34 +121,90 @@ func New(out io.Writer) {
 				if byteVal >= 65 && byteVal <= 90 { //if symbol is uppercase letter
 
 					byteVal = byteVal + 32
-					writer1.write_to_temp_buf(byteVal) //writing to temporary buffer
+					writer1.writeToTempBuf(byteVal) //writing to temporary buffer
 
 				} else if byteVal >= 97 && byteVal <= 122 { //if symbol is lowercase letter
 
-					writer1.write_to_temp_buf(byteVal) //writing to temporary buffer
+					writer1.writeToTempBuf(byteVal) //writing to temporary buffer
 
 				} else if byteVal == 32 && len(writingBuf) != 0 { //if symbol is [space], and we have letters in our buffer
 
-					writer1.write_to_chan(ch) //send temporary buffer content to channel, empty the temporary buffer
+					writer1.writeToChan(ch) //send temporary buffer content to channel, empty the temporary buffer
 
 				} else if ((byteVal > 122 || byteVal < 65) || (byteVal > 90 && byteVal < 97)) && len(writingBuf) != 0 { //if symbol is any other than letter or space, and we have letters in our buffer
 
-					writer1.write_to_chan(ch) //send temporary buffer content to channel, empty the temporary buffer
+					writer1.writeToChan(ch) //send temporary buffer content to channel, empty the temporary buffer
 
 				} else {
 					continue
 				}
 			} else {
-				writer1.write_to_chan(ch) //send temporary buffer content to channel, empty the temporary buffer
+				writer1.writeToChan(ch) //send temporary buffer content to channel, empty the temporary buffer
 				break
 			}
 		}
 		close(ch) //close channel, so our that our reader1 will stop working after there are no elements left, in other case reader1 will cause deadlock
 	}()
 
-	reader1.read_from_chan(ch) //reading from channel in range of elements in channel
+	reader1.readFromChan(ch) //reading from channel in range of elements in channel
 
-	reader1.get20mostfrequentwords() //getting 20 most frequent words, and write it to rating slice
+	reader1.getMostFrequentWords(20) //getting 20 most frequent words, and write it to rating slice
+	reader1.print()                  //print elements from words according to the rating list
+	fmt.Printf("Process took %s\n", time.Since(start))
+}
+
+func main() {
+	start := time.Now()
+	file, err := ioutil.ReadFile("mobydick.txt") //open file
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	words := make([]record1, 0)
+	reader1 := reader1{words: &words} //creating reader1
+
+	writingBuf := make([]byte, 0)
+	writer1 := writer1{&writingBuf} //writer1
+
+	ch := make(chan []byte) //channel that we will use to pass slices of bytes from writer1 to reader1
+	//btw reader1 listens in range of elements that are passed to channel, it will stop working when there are no elements left, so we don't need any wait groups
+
+	go func() {
+		for i := 0; i < len(file)-1; i++ {
+
+			if err == nil {
+				byteVal := file[i]
+				if byteVal >= 65 && byteVal <= 90 { //if symbol is uppercase letter
+
+					byteVal = byteVal + 32
+					writer1.writeToTempBuf(byteVal) //writing to temporary buffer
+
+				} else if byteVal >= 97 && byteVal <= 122 { //if symbol is lowercase letter
+
+					writer1.writeToTempBuf(byteVal) //writing to temporary buffer
+
+				} else if byteVal == 32 && len(writingBuf) != 0 { //if symbol is [space], and we have letters in our buffer
+
+					writer1.writeToChan(ch) //send temporary buffer content to channel, empty the temporary buffer
+
+				} else if ((byteVal > 122 || byteVal < 65) || (byteVal > 90 && byteVal < 97)) && len(writingBuf) != 0 { //if symbol is any other than letter or space, and we have letters in our buffer
+
+					writer1.writeToChan(ch) //send temporary buffer content to channel, empty the temporary buffer
+
+				} else {
+					continue
+				}
+			} else {
+				writer1.writeToChan(ch) //send temporary buffer content to channel, empty the temporary buffer
+				break
+			}
+		}
+		close(ch) //close channel, so our that our reader1 will stop working after there are no elements left, in other case reader1 will cause deadlock
+	}()
+
+	reader1.readFromChan(ch) //reading from channel in range of elements in channel
+
+	reader1.getMostFrequentWords(20) //getting 20 most frequent words, and write it to rating slice
 	reader1.print()                  //print elements from words according to the rating list
 	fmt.Printf("Process took %s\n", time.Since(start))
 }
